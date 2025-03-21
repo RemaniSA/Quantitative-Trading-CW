@@ -80,5 +80,4 @@ if missing_live_returns.any().any():
 # # Fill all remaining missing values in df_returns with 0 (assuming no return means 0)
 # df_returns = df_returns.fillna(0)
 
-
-# %%
+#%%
