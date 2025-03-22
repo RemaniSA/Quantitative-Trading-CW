@@ -113,7 +113,7 @@ df_momentum.to_csv('datasets/US_Momentum.csv')
 # to assess the overall significance of the momentum factor.
 
 
-def famaMacBeth(factor, returns, live, min_obs=5):
+def famaMacBeth(factor, returns, live, min_obs=1800):
     """
     Performs weekly Fama-MacBeth regressions.
     
@@ -187,10 +187,15 @@ print("\nT-Statistic:", tstat)
 # Save gamma coefficients to a CSV file
 df_gamma.to_csv('datasets/US_FMB_Gamma.csv')
 
+mean_factor_return = df_gamma.mean()
+print(f'Mean Factor Return: {mean_factor_return[0]:.4f}')
+
 # Plot the factor returns
 plt.figure(figsize=(10,6))
 plt.plot(df_gamma)
 plt.title('Factor Returns')
+
+
 
 # %%
 # Grid Search for Minimum Observation Threshold (min_obs)
@@ -204,7 +209,6 @@ plt.title('Factor Returns')
 #
 # We then review the median and key quantiles of these counts to determine a reasonable grid range 
 # for the minimum number of observations required in our regressions.
-
 
 valid_counts = []
 
@@ -234,3 +238,131 @@ for min_obs in grid_min_obs:
 
 if first_significant is None:
     print("No significant t-statistic found within the grid of minimum observations.")
+
+# %%
+# Q4: Compute Comomentum Measure
+#
+# We compute comomentum as per Lou and Polk (2021) (without industry adjustment)
+# For each week t (starting from when a full 52-week window is available):
+#   1. For each stock that is live at t, run a 52-week OLS regression:
+#         r_i = alpha + beta1*(Mkt-RF) + beta2*(SMB) + beta3*(HML) + epsilon_i
+#      and obtain the residual series for that stock.
+#   2. At time t, rank stocks by momentum (from Q2).
+#   3. Define "losers" decile as bottom 10% and "winners" decile as top 10%.
+#   4. For each decile, compute pairwise Pearson correlation matrix of the regression residuals,
+#      then average off-diagonal elements to obtain the winners and losers comomentum
+#   5. Average these to get overall comomentum for week t.
+#   6. Repeat for each week to generate a time series of comomentum.
+
+# List to store comomentum values (one per week)
+comomentum_list = []
+
+# Set regression window size (52 weeks)
+window_size = 52
+
+# Loop over each week from the 52nd observation onward
+for pos in range(window_size - 1, len(df_returns.index)):
+    current_date = df_returns.index[pos]
+    # Define the rolling window (past 52 weeks, including current_date)
+    window_dates = df_returns.index[pos - window_size + 1 : pos + 1]
+    
+    # Dictionary to store each stock's residual series over the window
+    residuals_dict = {}
+    
+    # Loop over each stock
+    for stock in df_returns.columns:
+        # Only consider the stock if it is live at current_date
+        if df_live.loc[current_date, stock] != 1:
+            continue
+        
+        # Get the 52-week return series for the stock
+        y = df_returns.loc[window_dates, stock].values
+        if np.isnan(y).any():
+            continue
+        
+        # Get the corresponding factor data for the same window
+        try:
+            X = df_factors.loc[window_dates, ['Mkt-RF', 'SMB', 'HML']].values
+        except KeyError:
+            continue
+        if np.isnan(X).any():
+            continue
+        
+        # Add column of ones for intercept
+        X_design = np.hstack([np.ones((X.shape[0], 1)), X])
+        
+        # Run OLS regression: y = alpha + beta * factors
+        beta, _, _, _ = np.linalg.lstsq(X_design, y, rcond=None)
+        # Compute residuals: epsilon = y - X_design.dot(beta)
+        residual_series = y - X_design.dot(beta)
+        residuals_dict[stock] = residual_series
+    
+    # If not enough stocks for decile sorting, skip this date
+    if len(residuals_dict) < 10:
+        comomentum_list.append((current_date, np.nan))
+        continue
+    
+    # Create a DataFrame for residuals (columns: stocks, index: window_dates)
+    df_residuals = pd.DataFrame(residuals_dict, index=window_dates)
+    
+    # At the current date, get the momentum measure for valid stocks
+    # (df_momentum was computed in Q2)
+    current_mom = df_momentum.loc[current_date]
+    # Keep only stocks for which we have residuals
+    valid_stocks = [stock for stock in df_residuals.columns if stock in current_mom.index and not pd.isna(current_mom[stock])]
+    if len(valid_stocks) < 10:
+        comomentum_list.append((current_date, np.nan))
+        continue
+    # Extract momentum values for valid stocks
+    mom_series = current_mom[valid_stocks]
+    
+    # Determine decile thresholds
+    lower_thresh = np.percentile(mom_series, 10)
+    upper_thresh = np.percentile(mom_series, 90)
+    
+    # Identify loser (bottom decile) and winner (top decile) stocks
+    losers = mom_series[mom_series <= lower_thresh].index.tolist()
+    winners = mom_series[mom_series >= upper_thresh].index.tolist()
+    
+    # Function to compute average off-diagonal correlation in a residual DataFrame
+    def avg_offdiag_corr(df_group):
+        n = df_group.shape[1]
+        if n < 2:
+            return np.nan
+        corr_matrix = df_group.corr().to_numpy()
+        # Sum of off-diagonals = total sum minus sum of diagonal elements (which are 1)
+        sum_offdiag = corr_matrix.sum() - n
+        num_offdiag = n * (n - 1)
+        return sum_offdiag / num_offdiag
+    
+    # Compute decile-specific comomentum
+    comomentum_l = avg_offdiag_corr(df_residuals[losers]) if len(losers) >= 2 else np.nan
+    comomentum_w = avg_offdiag_corr(df_residuals[winners]) if len(winners) >= 2 else np.nan
+    
+    # Compute overall comomentum as the average of the loser and winner measures
+    if np.isnan(comomentum_l) or np.isnan(comomentum_w):
+        overall_comomentum = np.nan
+    else:
+        overall_comomentum = 0.5 * (comomentum_l + comomentum_w)
+    
+    # Append the result for the current date
+    comomentum_list.append((current_date, overall_comomentum))
+
+# Convert results to a DataFrame
+df_comomentum = pd.DataFrame(comomentum_list, columns=['Date', 'Comomentum']).set_index('Date')
+
+print("Comomentum Measure (first few rows):")
+print(df_comomentum.head())
+
+# Optionally, save the comomentum measure to a CSV file
+df_comomentum.to_csv('datasets/US_Comomentum.csv')
+
+# Plot the comomentum measure over time
+plt.figure(figsize=(10,6))
+plt.plot(df_comomentum.index, df_comomentum['Comomentum'], marker='o', linestyle='-')
+plt.title('Time Series of Comomentum Measure (Winners & Losers Deciles)')
+plt.xlabel('Date')
+plt.ylabel('Average Abnormal Residual Correlation')
+plt.show()
+
+# %%
