@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from standardiseFactor import standardiseFactor
 
 def famaMacBethMulti(returns, factors):
+    
 
     [T, N, K] = factors.shape
 
@@ -13,13 +14,23 @@ def famaMacBethMulti(returns, factors):
     resid = np.full((T,N), np.nan)
 
     for t in np.arange(1,T):
+        Y_full = returns[t, :]
+        X_full = factors[t-1, :, :]  # shape (N, K)
 
-        Y = returns[t,np.newaxis].T
-        X = np.hstack((np.ones((N,1)), factors[t-1,:,:]))
+        # Find valid (non-NaN) observations for both Y and X
+        valid_mask = ~np.isnan(Y_full) & ~np.isnan(X_full).any(axis=1)
 
-        coefs = np.linalg.lstsq(X, Y, rcond=None)[0].T
-        gamma[t, :] = coefs[0,1:]
-        resid[t,:] = Y.T - X.dot(coefs.T).T
+        Y = Y_full[valid_mask][:, np.newaxis]  # shape (n_valid, 1)
+        X = X_full[valid_mask, :]              # shape (n_valid, K)
+        X = np.hstack((np.ones((X.shape[0], 1)), X))  # Add intercept
+
+        if X.shape[0] >= X.shape[1]:  # Ensure sufficient observations
+            coefs = np.linalg.lstsq(X, Y, rcond=None)[0].T
+            gamma[t, :] = coefs[0,1:]
+            
+            # Fill residuals only for valid indices
+            fitted = X.dot(coefs.T).flatten()
+            resid[t, valid_mask] = Y.flatten() - fitted
 
     return gamma, resid
 
