@@ -23,7 +23,6 @@ df_live = pd.read_csv(live_path,header=None)
 df_dates = pd.read_excel(dates_path,header=None)
 df_names = pd.read_excel(names_path)
 df_factors=pd.read_csv(factors_path,index_col='Unnamed: 0')
-
 #%% 
 # Q1: Data Preprocessing
 
@@ -179,13 +178,13 @@ def famaMacBeth(factor, returns, live, min_obs=1800):
     return df_gamma, tstat
 
 # Run Fama-MacBeth regression using the momentum factor and stock returns
-df_gamma, tstat = famaMacBeth(df_momentum, df_returns, df_live)
+df_gamma, tstat = famaMacBeth(df_momentum, df_returns, df_live,min_obs=0) ## CHANGE THIS BEFORE SUBMISSION
 print("Fama–MacBeth Regression - Weekly Momentum Factor Coefficients (Gamma):")
 print(df_gamma.head())
 print("\nT-Statistic:", tstat)
 
 # Save gamma coefficients to a CSV file
-df_gamma.to_csv('datasets/US_FMB_Gamma.csv')
+# df_gamma.to_csv('datasets/US_FMB_Gamma.csv') ## CHANGE THIS BEFORE SUBMISSION
 
 mean_factor_return = df_gamma.mean()
 print(f'Mean Factor Return: {mean_factor_return[0]:.4f}')
@@ -364,5 +363,244 @@ plt.title('Time Series of Comomentum Measure (Winners & Losers Deciles)')
 plt.xlabel('Date')
 plt.ylabel('Average Abnormal Residual Correlation')
 plt.show()
+
+# %%
+#Quickly check the correlation between mom and comom:
+
+# Compute row-wise means
+mom_mean = df_momentum.mean(1)
+comom_mean = df_comomentum.mean(1)
+
+# Combine into a single DataFrame with named columns and drop NaNs
+df_corr = pd.concat([mom_mean, comom_mean], axis=1)
+df_corr.columns = ['momentum', 'comomentum']
+df_corr = df_corr.dropna(how='all')
+
+# Compute correlation
+correlation = df_corr['momentum'].corr(df_corr['comomentum'])
+
+print(f'Correlation between Momentum and Comomentum: {correlation:.4f}')
+
+# %%
+# Q5+6: Adjust Momentum Factor Using Comomentum
+#
+# We implement two approaches to adjust momentum:
+#
+# Approach 1: Continuous Weight Adjustment
+#   Adjust momentum by:
+#       M_adj_cont = M * f_cont,  where f_cont = 1 / (1 + lambda * (C_t - C_bar))
+#
+# Approach 2: Threshold-Based Adjustment
+#   Adjust momentum by:
+#       M_adj_thresh = M * I{ C_t <= T }
+#
+# M is the momentum factor (df_momentum), C_t is comomentum (df_comomentum).
+# C_bar is median of comomentum and T is a threshold (e.g., 75th percentile).
+#
+# Parameters (need to optimise via grid search or cross-validation):
+lambda_val = 1.0
+C_bar = df_comomentum['Comomentum'].median()
+threshold_val = df_comomentum['Comomentum'].quantile(0.795)
+
+# Create copies of df_momentum for the adjusted factors
+df_momentum_adj_cont = df_momentum.copy()
+df_momentum_adj_thresh = df_momentum.copy()
+
+# Loop over each date in df_momentum and apply the adjustments
+for date in df_momentum.index:
+    # Ensure comomentum is available for this date
+    if date not in df_comomentum.index:
+        continue
+    C_t = df_comomentum.loc[date, 'Comomentum']
+    # Continuous adjustment factor: higher comomentum reduces the weight
+    f_cont = 1.0 / (1.0 + lambda_val * (C_t - C_bar))
+    # Threshold adjustment factor: 1 if comomentum is below threshold, 0 otherwise
+    f_thresh = 1.0 if C_t <= threshold_val else 0.0
+    # Multiply entire row (i.e., for all stocks) by adjustment factor
+    df_momentum_adj_cont.loc[date] = df_momentum.loc[date] * f_cont
+    df_momentum_adj_thresh.loc[date] = df_momentum.loc[date] * f_thresh
+
+# For each method, aggregate across stocks to obtain a time series
+standard_mom_avg = df_momentum.mean(1)
+adj_cont_mom_avg = df_momentum_adj_cont.mean(1)
+adj_thresh_mom_avg = df_momentum_adj_thresh.mean(1)
+
+# Combine these series into one DataFrame
+df_adjusted = pd.DataFrame({
+    'Standard_Momentum': standard_mom_avg,
+    'Adjusted_Continuous': adj_cont_mom_avg,
+    'Adjusted_Threshold': adj_thresh_mom_avg
+})
+
+# Compute summary statistics for each series
+summary_stats = df_adjusted.describe()
+print("Summary Statistics for Momentum Factors:")
+print(summary_stats)
+
+# Compute cumulative returns (assuming additive returns; if they are percentages, adjust as needed)
+df_cum_returns = df_adjusted.cumsum()
+print("Cumulative Returns (first few rows):")
+print(df_cum_returns.head())
+
+# Plot the cumulative returns using seaborn
+import seaborn as sns
+sns.set(style="whitegrid")
+
+plt.figure(figsize=(12,8))
+sns.lineplot(data=df_cum_returns)
+plt.title("Cumulative Returns of Adjusted Momentum Factors")
+plt.xlabel("Date")
+plt.ylabel("Cumulative Return")
+plt.legend()
+plt.show()
+
+# %%
+# Q5+6 part 2: Parameter Tuning via Walk-Forward (Rolling Window) Grid Search
+
+# We collect both the best parameters and the performance metric 
+# for each iteration and for each parameter set.
+# We then review the results to determine the best parameter set.
+
+# Define parameter grids:
+lambda_grid = np.concatenate([np.linspace(0.1,0.1,1), np.linspace(39.5, 41, 10)])  # candidate values for continuous adjustment parameter
+threshold_grid = np.linspace(0.795, 0.815, 9)  # candidate quantile thresholds for threshold adjustment
+
+# Define performance metric (here, cumulative return)
+def performance_metric(series):
+    return series.sum()
+
+# Set window sizes (in weeks)
+train_window = 100   # training period length
+test_window = 10     # validation period length
+
+# List to store tuning results for each walk-forward iteration
+tuning_results = []
+
+# Determine start and end positions for the rolling windows
+start_pos = train_window - 1
+end_pos = len(df_returns.index) - test_window
+
+# Loop over each window in steps of test_window
+for pos in range(start_pos, end_pos, test_window):
+    # Define training and testing periods
+    train_dates = df_returns.index[pos - train_window + 1 : pos + 1]
+    test_dates = df_returns.index[pos + 1 : pos + test_window + 1]
+    
+    # Ensure we only use dates that exist in df_comomentum:
+    train_dates = train_dates.intersection(df_comomentum.index)
+    test_dates = test_dates.intersection(df_comomentum.index)
+    if len(train_dates) == 0 or len(test_dates) == 0:
+        continue
+    
+    # Subset momentum and comomentum for the training period
+    train_mom = df_momentum.loc[train_dates]
+    train_comom = df_comomentum.loc[train_dates]
+    
+    # Subset returns for the test period (if needed for other evaluations)
+    test_returns = df_returns.loc[test_dates]
+    
+    # --- Continuous Adjustment Grid Search ---
+    best_metric_cont = -np.inf
+    best_params_cont = None
+    for lam in lambda_grid:
+        # Compute benchmark (median) comomentum over the training period
+        C_bar = train_comom['Comomentum'].median()
+        # Adjust momentum in training period using continuous function:
+        # f(C_t) = 1 / (1 + lam*(C_t - C_bar))
+        adjusted_mom_train = train_mom.copy()
+        for date in train_mom.index:
+            if date not in train_comom.index:
+                continue
+            C_t = train_comom.loc[date, 'Comomentum']
+            f_cont = 1.0 / (1.0 + lam * (C_t - C_bar))
+            adjusted_mom_train.loc[date] = train_mom.loc[date] * f_cont
+        train_signal = adjusted_mom_train.mean(axis=1)
+        
+        # Apply same adjustment for test period using the same benchmark C_bar
+        adjusted_mom_test = df_momentum.loc[test_dates].copy()
+        for date in test_dates:
+            if date not in df_comomentum.index:
+                continue
+            C_t = df_comomentum.loc[date, 'Comomentum']
+            f_cont = 1.0 / (1.0 + lam * (C_t - C_bar))
+            adjusted_mom_test.loc[date] = df_momentum.loc[date] * f_cont
+        test_signal = adjusted_mom_test.mean(axis=1)
+        
+        metric_value = performance_metric(test_signal)
+        if metric_value > best_metric_cont:
+            best_metric_cont = metric_value
+            best_params_cont = lam
+    
+    # --- Threshold-Based Adjustment Grid Search ---
+    best_metric_thresh = -np.inf
+    best_params_thresh = None
+    for thresh in threshold_grid:
+        # Use the thresh quantile of comomentum over the training period as the threshold value
+        threshold_value = train_comom['Comomentum'].quantile(thresh)
+        adjusted_mom_train_thresh = train_mom.copy()
+        for date in train_mom.index:
+            if date not in train_comom.index:
+                continue
+            C_t = train_comom.loc[date, 'Comomentum']
+            f_thresh = 1.0 if C_t <= threshold_value else 0.0
+            adjusted_mom_train_thresh.loc[date] = train_mom.loc[date] * f_thresh
+        train_signal_thresh = adjusted_mom_train_thresh.mean(axis=1)
+        
+        adjusted_mom_test_thresh = df_momentum.loc[test_dates].copy()
+        for date in test_dates:
+            if date not in df_comomentum.index:
+                continue
+            C_t = df_comomentum.loc[date, 'Comomentum']
+            f_thresh = 1.0 if C_t <= threshold_value else 0.0
+            adjusted_mom_test_thresh.loc[date] = df_momentum.loc[date] * f_thresh
+        test_signal_thresh = adjusted_mom_test_thresh.mean(axis=1)
+        
+        metric_value_thresh = performance_metric(test_signal_thresh)
+        if metric_value_thresh > best_metric_thresh:
+            best_metric_thresh = metric_value_thresh
+            best_params_thresh = thresh
+    
+    # Append both results for the current walk-forward iteration:
+    tuning_results.append({
+        'train_start': train_dates[0],
+        'train_end': train_dates[-1],
+        'test_start': test_dates[0],
+        'test_end': test_dates[-1],
+        'best_params_cont': best_params_cont,
+        'performance_cont': best_metric_cont,
+        'best_params_thresh': best_params_thresh,
+        'performance_thresh': best_metric_thresh
+    })
+
+# Convert tuning results to a DataFrame for review
+df_tuning_results = pd.DataFrame(tuning_results)
+print("Tuning Results (each row corresponds to one walk-forward iteration):")
+print(df_tuning_results)
+
+df_tuning_results.to_csv('datasets/US_Momentum_Adjustment_Tuning.csv')
+
+# Get 3 most occuring lambda and their average performance
+top_lambdas = (
+    df_tuning_results.groupby('best_params_cont')['performance_cont']
+    .agg(lambda_count='count', lambda_avg_return='mean')
+    .reset_index()
+    .sort_values(by='lambda_count', ascending=False)
+    .head(3)
+)
+
+# Get 3 most occuring thresholds and their average performance
+top_thresholds = (
+    df_tuning_results.groupby('best_params_thresh')['performance_thresh']
+    .agg(threshold_count='count', threshold_avg_return='mean')
+    .reset_index()
+    .sort_values(by='threshold_count', ascending=False)
+    .head(3)
+)
+
+print("\nTop 3 Lambda Values (Most Frequently Selected):")
+print(top_lambdas)
+
+print("\nTop 3 Threshold Values (Most Frequently Selected):")
+print(top_thresholds)
 
 # %%
