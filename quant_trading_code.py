@@ -68,6 +68,7 @@ print("Dates DataFrame shape:", df_dates.shape)
 print("Names DataFrame shape:", df_names.shape)
 print("Factors DataFrame shape:", df_factors.shape)
 
+
 #%%
 # Q2: Compute Standard Momentum as Sum of Weekly Returns 
 # based on Jegadeesh and Titman (1993):
@@ -96,6 +97,7 @@ print(df_momentum.head())
 # Save momentum factor to a CSV file
 df_momentum.to_csv('datasets/US_Momentum.csv')
 
+
 # %%
 # Q3: Fama-MacBeth Regression
 #
@@ -110,7 +112,6 @@ df_momentum.to_csv('datasets/US_Momentum.csv')
 #
 # The weekly regression coefficients (gamma) are collected, and a t-statistic is computed over these gamma values 
 # to assess the overall significance of the momentum factor.
-
 
 def famaMacBeth(factor, returns, live, min_obs=1800):
     """
@@ -195,7 +196,6 @@ plt.plot(df_gamma)
 plt.title('Factor Returns')
 
 
-
 # %%
 # Grid Search for Minimum Observation Threshold (min_obs)
 #
@@ -237,6 +237,7 @@ for min_obs in grid_min_obs:
 
 if first_significant is None:
     print("No significant t-statistic found within the grid of minimum observations.")
+
 
 # %%
 # Q4: Compute Comomentum Measure
@@ -381,6 +382,7 @@ correlation = df_corr['momentum'].corr(df_corr['comomentum'])
 
 print(f'Correlation between Momentum and Comomentum: {correlation:.4f}')
 
+
 # %%
 # Q5+6: Adjust Momentum Factor Using Comomentum
 #
@@ -398,7 +400,7 @@ print(f'Correlation between Momentum and Comomentum: {correlation:.4f}')
 # C_bar is median of comomentum and T is a threshold (e.g., 75th percentile).
 #
 # Parameters (need to optimise via grid search or cross-validation):
-lambda_val = 5.0
+lambda_val = 20.0
 C_bar = df_comomentum['Comomentum'].median()
 threshold_val = df_comomentum['Comomentum'].quantile(0.795)
 
@@ -437,12 +439,21 @@ summary_stats = df_adjusted.describe()
 print("Summary Statistics for Momentum Factors:")
 print(summary_stats)
 
-# Compute cumulative returns (assuming additive returns; if they are percentages, adjust as needed)
+# Annualised mean and standard deviation
+annualised_mean = summary_stats.loc['mean'] * 52
+annualised_std = summary_stats.loc['std'] * np.sqrt(52)
+
+print("\nAnnualised Mean:")
+print(annualised_mean)
+print("\nAnnualised Standard Deviation:")
+print(annualised_std)
+
+# Compute cumulative returns
 df_cum_returns = df_adjusted.cumsum()
 print("Cumulative Returns (first few rows):")
 print(df_cum_returns.head())
 
-# Plot the cumulative returns using seaborn
+# Plot cumulative returns using seaborn
 import seaborn as sns
 sns.set(style="whitegrid")
 
@@ -455,6 +466,37 @@ plt.legend()
 plt.show()
 
 # %%
+
+# Sharpe Ratio Over Time
+
+df_cum_sharpe = pd.DataFrame(index=df_adjusted.index, columns=df_adjusted.columns)
+
+# Loop over each adj. momentum factor column
+for col in df_adjusted.columns:
+    # Compute excess returns
+    excess_returns = df_adjusted[col] - df_factors["RF"]
+    
+    # Compute the cumulative mean and standard deviation
+    cum_mean = excess_returns.expanding().mean()
+    cum_std = excess_returns.expanding().std()
+    
+    # Calculate the cumulative Sharpe ratio
+    df_cum_sharpe[col] = cum_mean / cum_std * np.sqrt(52) # annualised
+
+# Now df_cum_sharpe holds the cumulative Sharpe ratio up to each date for each column
+df_cum_sharpe = df_cum_sharpe.dropna()
+print(df_cum_sharpe)
+
+# Plot the cumulative Sharpe ratios
+plt.figure(figsize=(12,8))
+sns.lineplot(data=df_cum_sharpe[df_cum_sharpe.index >= '1996-01-01'])
+plt.title("Cumulative Sharpe Ratios of Adjusted Momentum Factors")
+plt.xlabel("Date")
+plt.ylabel("Cumulative Sharpe Ratio")
+plt.legend()
+plt.show()
+
+# %%
 # Q5+6 part 2: Parameter Tuning via Walk-Forward (Rolling Window) Grid Search
 
 # We collect both the best parameters and the performance metric 
@@ -462,7 +504,7 @@ plt.show()
 # We then review the results to determine the best parameter set.
 
 # Define parameter grids:
-lambda_grid = np.concatenate([np.linspace(0.1,0.1,1), np.linspace(2, 20, 20)])  # candidate values for continuous adjustment parameter
+lambda_grid = np.concatenate([np.linspace(0.1,0.1,1), np.linspace(40, 70, 20)])  # candidate values for continuous adjustment parameter
 threshold_grid = np.linspace(0.795, 0.815, 9)  # candidate quantile thresholds for threshold adjustment
 
 # Define performance metric (here, cumulative return)
@@ -657,7 +699,7 @@ for pos in range(start_pos, end_pos, test_window):
         'performance_cont': best_metric_cont
     })
 
-# Results for null (randomized) comomentum
+# Results for null (randomised) comomentum
 df_null_results = pd.DataFrame(null_results)
 
 # Top lambdas under the null
@@ -672,4 +714,35 @@ top_null_lambdas = (
 print("\n[H₀] Top 3 Lambda Values with Randomized Comomentum:")
 print(top_null_lambdas)
 
+# %%
+
+# Rerun Fama-MacBeth regression using the adjusted momentum factor with the best lambda value
+
+# Define the best lambda value
+best_lambda = 5
+
+# Adjust momentum using the best lambda value
+C_bar = df_comomentum['Comomentum'].median()
+df_momentum_adj_best = df_momentum.copy()
+
+for date in df_momentum.index:
+    if date not in df_comomentum.index:
+        continue
+    C_t = df_comomentum.loc[date, 'Comomentum']
+    f_cont = 1.0 / (1.0 + best_lambda * (C_t - C_bar))
+    df_momentum_adj_best.loc[date] = df_momentum.loc[date] * f_cont
+
+# Run Fama-MacBeth regression using the adjusted momentum factor
+df_gamma_best, tstat_best = famaMacBeth(df_momentum_adj_best, df_returns, df_live, min_obs=0)
+print("Fama–MacBeth Regression - Weekly Adjusted Momentum Factor Coefficients (Gamma):")
+print(df_gamma_best.head())
+
+# Save gamma coefficients to a CSV file
+df_gamma_best.to_csv('datasets/US_FMB_Gamma_Adjusted.csv')
+
+mean_factor_return_best = df_gamma_best.mean()
+print(f'Mean Factor Return (Adjusted): {mean_factor_return_best[0]:.4f}')
+
+# TStat
+print("\nT-Statistic (Adjusted):", tstat_best)
 # %%
