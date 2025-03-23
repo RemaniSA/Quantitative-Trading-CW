@@ -5,6 +5,10 @@ import numpy as np
 import pandas as pd
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
+warnings.filterwarnings("ignore", category=RuntimeWarning, message="Mean of empty slice")
+warnings.filterwarnings("ignore", category=RuntimeWarning, message="Degrees of freedom <= 0 for slice.")
+
+from helper_functions.standardiseFactor import standardiseFactor
 
 #%%
 # Data Loading
@@ -307,7 +311,14 @@ for pos in range(window_size - 1, len(df_returns.index)):
     
     # At the current date, get the momentum measure for valid stocks
     # (df_momentum was computed in Q2)
-    current_mom = df_momentum.loc[current_date]
+    # Standardise momentum cross-sectionally (for all dates at once)
+    df_momentum_std = pd.DataFrame(
+        standardiseFactor(df_momentum.values),
+        index=df_momentum.index,
+        columns=df_momentum.columns
+    )
+
+    current_mom = df_momentum_std.loc[current_date]
     # Keep only stocks for which we have residuals
     valid_stocks = [stock for stock in df_residuals.columns if stock in current_mom.index and not pd.isna(current_mom[stock])]
     if len(valid_stocks) < 10:
@@ -400,7 +411,7 @@ print(f'Correlation between Momentum and Comomentum: {correlation:.4f}')
 # C_bar is median of comomentum and T is a threshold (e.g., 75th percentile).
 #
 # Parameters (need to optimise via grid search or cross-validation):
-lambda_val = 20.0
+lambda_val = 5.0
 C_bar = df_comomentum['Comomentum'].median()
 threshold_val = df_comomentum['Comomentum'].quantile(0.795)
 
@@ -503,8 +514,13 @@ plt.show()
 # for each iteration and for each parameter set.
 # We then review the results to determine the best parameter set.
 
-# Define parameter grids:
-lambda_grid = np.concatenate([np.linspace(0.1,0.1,1), np.linspace(40, 70, 20)])  # candidate values for continuous adjustment parameter
+# Define parameter grids: 
+lambda_grid = np.concatenate([    # candidate values for continuous adjustment parameter
+    np.linspace(0.1, 10, 10),     # fine grid for small lambda
+    np.linspace(15, 50, 8),       # coarser grid for moderate lambda
+    np.linspace(60, 100, 5)       # sparse grid for large lambda
+])
+
 threshold_grid = np.linspace(0.795, 0.815, 9)  # candidate quantile thresholds for threshold adjustment
 
 # Define performance metric (here, cumulative return)
