@@ -398,7 +398,7 @@ print(f'Correlation between Momentum and Comomentum: {correlation:.4f}')
 # C_bar is median of comomentum and T is a threshold (e.g., 75th percentile).
 #
 # Parameters (need to optimise via grid search or cross-validation):
-lambda_val = 1.0
+lambda_val = 5.0
 C_bar = df_comomentum['Comomentum'].median()
 threshold_val = df_comomentum['Comomentum'].quantile(0.795)
 
@@ -462,7 +462,7 @@ plt.show()
 # We then review the results to determine the best parameter set.
 
 # Define parameter grids:
-lambda_grid = np.concatenate([np.linspace(0.1,0.1,1), np.linspace(39.5, 41, 10)])  # candidate values for continuous adjustment parameter
+lambda_grid = np.concatenate([np.linspace(0.1,0.1,1), np.linspace(2, 20, 20)])  # candidate values for continuous adjustment parameter
 threshold_grid = np.linspace(0.795, 0.815, 9)  # candidate quantile thresholds for threshold adjustment
 
 # Define performance metric (here, cumulative return)
@@ -602,5 +602,74 @@ print(top_lambdas)
 
 print("\nTop 3 Threshold Values (Most Frequently Selected):")
 print(top_thresholds)
+
+# %%
+# Hypothesis Test: Is comomentum actually adding signal?
+
+# We will perform a hypothesis test to determine if the comomentum measure is adding signal to the momentum factor.
+# Specifically, we will compare the performance of the adjusted momentum factor using the true comomentum values
+# against the performance of the adjusted momentum factor using randomized (null) comomentum values.
+
+# If the randomised dataset returns the same hyperparameters as the true dataset, then the comomentum measure is not adding signal.
+# Conclusion: No signal added by comomentum, since the same hyperparameters are selected for the randomised dataset.
+
+# Shuffle comomentum to destroy any true time structure
+df_comomentum_shuffled = df_comomentum.copy()
+df_comomentum_shuffled['Comomentum'] = np.random.permutation(df_comomentum_shuffled['Comomentum'].values)
+
+null_results = []
+
+for pos in range(start_pos, end_pos, test_window):
+    train_dates = df_returns.index[pos - train_window + 1 : pos + 1]
+    test_dates = df_returns.index[pos + 1 : pos + test_window + 1]
+
+    train_dates = train_dates.intersection(df_comomentum.index)
+    test_dates = test_dates.intersection(df_comomentum.index)
+    if len(train_dates) == 0 or len(test_dates) == 0:
+        continue
+
+    train_mom = df_momentum.loc[train_dates]
+    train_comom = df_comomentum_shuffled.loc[train_dates]
+    test_returns = df_returns.loc[test_dates]
+
+    best_metric_cont = -np.inf
+    best_params_cont = None
+    for lam in lambda_grid:
+        C_bar = train_comom['Comomentum'].median()
+
+        adjusted_mom_test = df_momentum.loc[test_dates].copy()
+        for date in test_dates:
+            if date not in df_comomentum_shuffled.index:
+                continue
+            C_t = df_comomentum_shuffled.loc[date, 'Comomentum']
+            f_cont = 1.0 / (1.0 + lam * (C_t - C_bar))
+            adjusted_mom_test.loc[date] = df_momentum.loc[date] * f_cont
+        test_signal = adjusted_mom_test.mean(axis=1)
+        metric_value = performance_metric(test_signal)
+        if metric_value > best_metric_cont:
+            best_metric_cont = metric_value
+            best_params_cont = lam
+
+    null_results.append({
+        'test_start': test_dates[0],
+        'test_end': test_dates[-1],
+        'best_params_cont': best_params_cont,
+        'performance_cont': best_metric_cont
+    })
+
+# Results for null (randomized) comomentum
+df_null_results = pd.DataFrame(null_results)
+
+# Top lambdas under the null
+top_null_lambdas = (
+    df_null_results.groupby('best_params_cont')['performance_cont']
+    .agg(lambda_count='count', lambda_avg_return='mean')
+    .reset_index()
+    .sort_values(by='lambda_count', ascending=False)
+    .head(3)
+)
+
+print("\n[H₀] Top 3 Lambda Values with Randomized Comomentum:")
+print(top_null_lambdas)
 
 # %%
