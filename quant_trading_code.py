@@ -732,24 +732,23 @@ print(top_null_lambdas)
 
 # %%
 
-# Rerun Fama-MacBeth regression using the adjusted momentum factor with the best lambda value
+# Rerun Fama-MacBeth regression using the adjusted continuous momentum factor
 
 # Define the best lambda value
 best_lambda = 5
 
 # Adjust momentum using the best lambda value
 C_bar = df_comomentum['Comomentum'].median()
-df_momentum_adj_best = df_momentum.copy()
 
 for date in df_momentum.index:
     if date not in df_comomentum.index:
         continue
     C_t = df_comomentum.loc[date, 'Comomentum']
     f_cont = 1.0 / (1.0 + best_lambda * (C_t - C_bar))
-    df_momentum_adj_best.loc[date] = df_momentum.loc[date] * f_cont
+    df_momentum_adj_cont.loc[date] = df_momentum.loc[date] * f_cont
 
 # Run Fama-MacBeth regression using the adjusted momentum factor
-df_gamma_best, tstat_best = famaMacBeth(df_momentum_adj_best, df_returns, df_live, min_obs=0)
+df_gamma_best, tstat_best = famaMacBeth(df_momentum_adj_cont, df_returns, df_live, min_obs=0)
 print("Fama–MacBeth Regression - Weekly Adjusted Momentum Factor Coefficients (Gamma):")
 print(df_gamma_best.head())
 
@@ -761,4 +760,18 @@ print(f'Mean Factor Return (Adjusted): {mean_factor_return_best[0]:.4f}')
 
 # TStat
 print("\nT-Statistic (Adjusted):", tstat_best)
+# %%
+
+# Run Fama-MacBeth regression on threshold-adjusted momentum factor
+df_gamma_thresh, tstat_thresh = famaMacBeth(df_momentum_adj_thresh, df_returns, df_live, min_obs=0)
+
+# Output results
+print("Fama–MacBeth Regression - Weekly Threshold-Adjusted Momentum Factor Coefficients (Gamma):")
+print(df_gamma_thresh.head())
+
+mean_factor_return_thresh = df_gamma_thresh.mean()
+print(f'Mean Factor Return (Threshold-Adjusted): {mean_factor_return_thresh[0]:.4f}')
+print(f"T-Statistic (Threshold-Adjusted): {tstat_thresh:.4f}")
+
+
 # %%
