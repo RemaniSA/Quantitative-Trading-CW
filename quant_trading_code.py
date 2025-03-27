@@ -1,14 +1,18 @@
 #%%
 import os
+import warnings
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import warnings
+import seaborn as sns
+
+from helper_functions.standardiseFactor import standardiseFactor
+
+# Suppress warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 warnings.filterwarnings("ignore", category=RuntimeWarning, message="Mean of empty slice")
 warnings.filterwarnings("ignore", category=RuntimeWarning, message="Degrees of freedom <= 0 for slice.")
-
-from helper_functions.standardiseFactor import standardiseFactor
 
 #%%
 # Data Loading
@@ -21,7 +25,7 @@ dates_path = os.path.join(base_dir, 'datasets', 'US_Dates.xlsx')
 names_path = os.path.join(base_dir, 'datasets', 'US_Names.xlsx')
 factors_path = os.path.join(base_dir, 'datasets', 'FamaFrench.csv')
 
-# Load  data
+# Load data
 df_returns = pd.read_csv(returns_path,header=None)
 df_live = pd.read_csv(live_path,header=None)
 df_dates = pd.read_excel(dates_path,header=None)
@@ -133,6 +137,8 @@ def famaMacBeth(factor, returns, live, min_obs=1800):
         df_gamma (pd.DataFrame): DataFrame with gamma coefficients (factor returns) indexed by date.
         tstat (float): t-statistic computed over the gamma series.
     """
+
+    # List to store gamma coefficients
     gamma_list = []
     
     # Loop over each date in the factor DataFrame
@@ -167,6 +173,7 @@ def famaMacBeth(factor, returns, live, min_obs=1800):
         coefs, _, _, _ = np.linalg.lstsq(X_design, y_valid, rcond=None)
         gamma = coefs[1]  # Extract gamma (slope coefficient)
         
+        # Append gamma to the list
         gamma_list.append((t, gamma))
     
     # Convert results to a DataFrame
@@ -183,14 +190,15 @@ def famaMacBeth(factor, returns, live, min_obs=1800):
     return df_gamma, tstat
 
 # Run Fama-MacBeth regression using the momentum factor and stock returns
-df_gamma, tstat = famaMacBeth(df_momentum, df_returns, df_live,min_obs=0) ## CHANGE THIS BEFORE SUBMISSION
+df_gamma, tstat = famaMacBeth(df_momentum, df_returns, df_live,min_obs=0)
 print("Fama–MacBeth Regression - Weekly Momentum Factor Coefficients (Gamma):")
 print(df_gamma.head())
 print("\nT-Statistic:", tstat)
 
 # Save gamma coefficients to a CSV file
-# df_gamma.to_csv('datasets/US_FMB_Gamma.csv') ## CHANGE THIS BEFORE SUBMISSION
+df_gamma.to_csv('datasets/US_FMB_Gamma.csv')
 
+# Compute the mean factor return
 mean_factor_return = df_gamma.mean()
 print(f'Mean Factor Return: {mean_factor_return[0]:.4f}')
 
@@ -213,9 +221,12 @@ plt.title('Factor Returns')
 # We then review the median and key quantiles of these counts to determine a reasonable grid range 
 # for the minimum number of observations required in our regressions.
 
+# List to store valid observation counts per week
 valid_counts = []
 
+# Loop over each week in the momentum factor DataFrame
 for t in df_momentum.index:
+    # Count valid observations (live stock with non-missing momentum)
     valid = (df_live.loc[t] == 1) & (df_momentum.loc[t].notna())
     valid_counts.append(valid.sum())
 
@@ -228,17 +239,24 @@ print("\nMedian valid observations:", valid_counts_series.median())
 print("\nQuantiles (25%, 50%, 75%):")
 print(valid_counts_series.quantile([0.25, 0.5, 0.75]))
 
+# Create grid of minimum observation thresholds to test
+# We start from 800 and increment by 100 up to 2000
 grid_min_obs = np.arange(800, 2000, 100)
 first_significant = None
 
+# Loop over each threshold in the grid
 for min_obs in grid_min_obs:
+    # Run Fama-MacBeth regression with the current threshold
     df_gamma_temp, tstat_temp = famaMacBeth(df_momentum, df_returns, df_live, min_obs=min_obs)
     print(f"Minimum obs = {min_obs}: t-statistic = {tstat_temp:.4f}")
+    # Check if t-statistic is significant
     if np.abs(tstat_temp) >= 1.96:
         first_significant = min_obs
+        # Print the first significant t-statistic found
         print(f"First significant t-stat found with min_obs = {min_obs}, t-statistic = {tstat_temp:.4f}")
         break
 
+# Fall-back message if no significant t-statistic is found
 if first_significant is None:
     print("No significant t-statistic found within the grid of minimum observations.")
 
@@ -318,6 +336,7 @@ for pos in range(window_size - 1, len(df_returns.index)):
         columns=df_momentum.columns
     )
 
+    # Extract momentum values for the current date
     current_mom = df_momentum_std.loc[current_date]
     # Keep only stocks for which we have residuals
     valid_stocks = [stock for stock in df_residuals.columns if stock in current_mom.index and not pd.isna(current_mom[stock])]
@@ -337,6 +356,26 @@ for pos in range(window_size - 1, len(df_returns.index)):
     
     # Function to compute average off-diagonal correlation in a residual DataFrame
     def avg_offdiag_corr(df_group):
+        """
+        Calculate the average off-diagonal correlation for a given DataFrame group.
+        This function computes the average of all off-diagonal elements in the 
+        correlation matrix of the input DataFrame. The off-diagonal elements 
+        represent the pairwise correlations between different columns.
+        Parameters:
+        -----------
+        df_group : pandas.DataFrame
+            A DataFrame containing numerical data for which the average 
+            off-diagonal correlation is to be calculated.
+        Returns:
+        --------
+        float
+            The average off-diagonal correlation. Returns NaN if the DataFrame 
+            has fewer than 2 columns.
+        Notes:
+        ------
+        - If the input DataFrame has fewer than 2 columns, the function returns NaN 
+          since a correlation matrix cannot be computed.
+        """
         n = df_group.shape[1]
         if n < 2:
             return np.nan
@@ -362,10 +401,11 @@ for pos in range(window_size - 1, len(df_returns.index)):
 # Convert results to a DataFrame
 df_comomentum = pd.DataFrame(comomentum_list, columns=['Date', 'Comomentum']).set_index('Date')
 
+# Display the computed comomentum measure
 print("Comomentum Measure (first few rows):")
 print(df_comomentum.head())
 
-# Optionally, save the comomentum measure to a CSV file
+# Save the comomentum measure to a CSV file
 df_comomentum.to_csv('datasets/US_Comomentum.csv')
 
 # Plot the comomentum measure over time
@@ -377,7 +417,7 @@ plt.ylabel('Average Abnormal Residual Correlation')
 plt.show()
 
 # %%
-#Quickly check the correlation between mom and comom:
+# Check the correlation between mom and comom:
 
 # Compute row-wise means
 mom_mean = df_momentum.mean(1)
@@ -391,6 +431,7 @@ df_corr = df_corr.dropna(how='all')
 # Compute correlation
 correlation = df_corr['momentum'].corr(df_corr['comomentum'])
 
+# Print the correlation
 print(f'Correlation between Momentum and Comomentum: {correlation:.4f}')
 
 
@@ -410,7 +451,7 @@ print(f'Correlation between Momentum and Comomentum: {correlation:.4f}')
 # M is the momentum factor (df_momentum), C_t is comomentum (df_comomentum).
 # C_bar is median of comomentum and T is a threshold (e.g., 75th percentile).
 #
-# Parameters (need to optimise via grid search or cross-validation):
+# Dummy Parameters (need to optimise via grid search or cross-validation):
 lambda_val = 5.0
 C_bar = df_comomentum['Comomentum'].median()
 threshold_val = df_comomentum['Comomentum'].quantile(0.795)
@@ -454,6 +495,7 @@ print(summary_stats)
 annualised_mean = summary_stats.loc['mean'] * 52
 annualised_std = summary_stats.loc['std'] * np.sqrt(52)
 
+# Print annualised mean and standard deviation
 print("\nAnnualised Mean:")
 print(annualised_mean)
 print("\nAnnualised Standard Deviation:")
@@ -465,9 +507,7 @@ print("Cumulative Returns (first few rows):")
 print(df_cum_returns.head())
 
 # Plot cumulative returns using seaborn
-import seaborn as sns
 sns.set(style="whitegrid")
-
 plt.figure(figsize=(12,8))
 sns.lineplot(data=df_cum_returns)
 plt.title("Cumulative Returns of Adjusted Momentum Factors")
@@ -675,26 +715,37 @@ print(top_thresholds)
 df_comomentum_shuffled = df_comomentum.copy()
 df_comomentum_shuffled['Comomentum'] = np.random.permutation(df_comomentum_shuffled['Comomentum'].values)
 
+# List to store null results
 null_results = []
 
+# Loop over each window in steps of test_window
 for pos in range(start_pos, end_pos, test_window):
+    # Define training and testing periods
     train_dates = df_returns.index[pos - train_window + 1 : pos + 1]
     test_dates = df_returns.index[pos + 1 : pos + test_window + 1]
 
+    # Ensure we only use dates that exist in df_comomentum:
     train_dates = train_dates.intersection(df_comomentum.index)
     test_dates = test_dates.intersection(df_comomentum.index)
     if len(train_dates) == 0 or len(test_dates) == 0:
         continue
 
+    # Subset momentum and comomentum for the training period
     train_mom = df_momentum.loc[train_dates]
     train_comom = df_comomentum_shuffled.loc[train_dates]
+    # Subset returns for the test period
     test_returns = df_returns.loc[test_dates]
 
+    # --- Continuous Adjustment Grid Search ---
+    # Perform grid search for the best lambda value
     best_metric_cont = -np.inf
     best_params_cont = None
+    # Loop over each lambda value in the grid
     for lam in lambda_grid:
+        # Compute benchmark (median) comomentum over the training
         C_bar = train_comom['Comomentum'].median()
 
+        # Adjust momentum in training period using continuous function:   
         adjusted_mom_test = df_momentum.loc[test_dates].copy()
         for date in test_dates:
             if date not in df_comomentum_shuffled.index:
@@ -702,12 +753,16 @@ for pos in range(start_pos, end_pos, test_window):
             C_t = df_comomentum_shuffled.loc[date, 'Comomentum']
             f_cont = 1.0 / (1.0 + lam * (C_t - C_bar))
             adjusted_mom_test.loc[date] = df_momentum.loc[date] * f_cont
+        # Compute the signal for the test period
         test_signal = adjusted_mom_test.mean(axis=1)
+        # Compute the performance metric
         metric_value = performance_metric(test_signal)
+        # Update the best metric and parameters if needed
         if metric_value > best_metric_cont:
             best_metric_cont = metric_value
             best_params_cont = lam
 
+    # Append the results for the current iteration
     null_results.append({
         'test_start': test_dates[0],
         'test_end': test_dates[-1],
@@ -740,6 +795,7 @@ best_lambda = 5
 # Adjust momentum using the best lambda value
 C_bar = df_comomentum['Comomentum'].median()
 
+# Loop over each date in df_momentum and apply the continuous adjustment
 for date in df_momentum.index:
     if date not in df_comomentum.index:
         continue
@@ -769,6 +825,7 @@ df_gamma_thresh, tstat_thresh = famaMacBeth(df_momentum_adj_thresh, df_returns, 
 print("Fama–MacBeth Regression - Weekly Threshold-Adjusted Momentum Factor Coefficients (Gamma):")
 print(df_gamma_thresh.head())
 
+# Display mean factor return and t-statistic
 mean_factor_return_thresh = df_gamma_thresh.mean()
 print(f'Mean Factor Return (Threshold-Adjusted): {mean_factor_return_thresh[0]:.4f}')
 print(f"T-Statistic (Threshold-Adjusted): {tstat_thresh:.4f}")
