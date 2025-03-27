@@ -14,13 +14,13 @@ The core objective was to evaluate the empirical performance of comomentum in an
   Momentum and comomentum signals were generated using rolling return windows and contemporaneous comovement matrices, respectively.
 
 - **Portfolio Construction**:  
-  Weekly long-short portfolios were formed with continuous and threshold-based position sizing. Factor portfolios were market-neutral and industry-neutral where applicable.
+  Weekly long-only portfolios were formed with continuous and threshold-based position sizing.
 
 - **Backtesting**:  
-  The strategy was evaluated on annual rebalancing windows using:
-  - Cumulative return and Sharpe ratio tracking
+  The strategy was evaluated using:
+  - Cumulative returns and Sharpe ratios
   - Fama–MacBeth cross-sectional regressions
-  - t-statistics and p-values for alpha significance
+  - t-statistics and p-values for gamma significance
 
 - **Key Finding**:  
   Comomentum **did not outperform** momentum out-of-sample and is likely absorbed by broader risk factors.
