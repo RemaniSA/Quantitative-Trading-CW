@@ -92,8 +92,8 @@ Ensure that:
 ## Authors
 
 - Shaan Ali Remani  
-- Chin-lan Chen  
 - José Santos  
+- Chin-lan Chen
 - Poh Har Yap
 
 # Coursework Brief
