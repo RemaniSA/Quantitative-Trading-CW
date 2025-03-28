@@ -4,7 +4,7 @@ This project was developed as part of the MSc Mathematical Trading and Finance p
 
 ## Overview
 
-The core objective was to evaluate the empirical performance of comomentum in an out-of-sample trading setting, comparing it with a traditional momentum strategy. Using cross-sectional weekly stock return data (2004–2024), the study implements multiple trading rules, factor standardisation, and walk-forward evaluation frameworks.
+The core objective was to evaluate the empirical performance of comomentum in an out-of-sample trading setting, comparing it with a traditional momentum strategy. Using cross-sectional weekly stock return data (1992–2024), the study implements multiple trading rules, factor standardisation, and walk-forward evaluation frameworks.
 
 ---
 
