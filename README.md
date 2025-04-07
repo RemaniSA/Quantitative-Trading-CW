@@ -1,31 +1,43 @@
-# Quantitative Trading Project (2024/25)
+# Quantitative Trading Project
 
-This project was developed as part of the MSc Mathematical Trading and Finance programme at Bayes Business School (formerly Cass). The work investigates whether the comomentum factor, introduced by Lou & Polk (2021), enhances the performance of standard momentum trading strategies in US equities.
+This project was developed as part of the MSc Mathematical Trading and Finance programme at Bayes Business School (formerly Cass). It evaluates the effectiveness of comomentum-adjusted momentum strategies, as proposed by Lou & Polk (2021), in generating out-of-sample alpha across a large cross-section of US equities (**7000+** stocks).
 
-## Overview
+## Problem
 
-The core objective was to evaluate the empirical performance of comomentum in an out-of-sample trading setting, comparing it with a traditional momentum strategy. Using cross-sectional weekly stock return data (1992–2024), the study implements multiple trading rules, factor standardisation, and walk-forward evaluation frameworks.
+The project sought to assess whether incorporating comomentum, a signal based on crowding and return co-movement, can enhance standard momentum trading strategies. Using 29 years of weekly return data (1992–2021), we built and backtested multiple signal variants, compared performance across evaluation metrics, and benchmarked against both traditional momentum and a randomised null strategy.
 
----
+## My Reflections
 
-## Methodology
+This was my first exposure to factor investing, and I was fortunate to be mentored by Bernd Hanke, CIO of Global Systematic Investors and former Global Head of Quantitative Equities at GSAM. A key lesson from the project was the importance of validating factors beyond the environment in which they were originally proposed. Academic papers often showcase strong results, but those may not generalise across universes, regimes, or rebalancing frequencies. Our replication, constrained by simplified assumptions and lacking Lou & Polk’s formal industry adjustment, returned statistically insignificant results.
 
-- **Signal Construction**:  
-  Momentum and comomentum signals were generated using rolling return windows and contemporaneous comovement matrices, respectively.
+Unlike many coursework projects with clean datasets, this one demanded real-world data handling and reinforced good habits under pressure (trust my processes, build tools that scale etc.).
 
-- **Portfolio Construction**:  
-  Weekly long-only portfolios were formed with continuous and threshold-based position sizing.
+## Methods
 
-- **Backtesting**:  
-  The strategy was evaluated using:
-  - Cumulative returns and Sharpe ratios
+- Signal Construction: Built momentum and comomentum signals using rolling returns and contemporaneous comovement matrices
+- Portfolio Construction: Formed weekly long-only portfolios using continuous, threshold, and hybrid sizing rules
+- Evaluation Metrics: 
+  - Cumulative return
+  - Sharpe ratio
   - Fama–MacBeth cross-sectional regressions
-  - t-statistics and p-values for gamma significance
+  - t-statistics and p-values for signal significance
+- Null Benchmarking: Compared strategy performance to a randomised comomentum control to rule out spurious effects
 
-- **Key Finding**:  
-  Comomentum **did not outperform** momentum out-of-sample and is likely absorbed by broader risk factors.
+## Repository Structure
 
----
+```
+Quantitative-Trading-CW/
+├── Literature/
+├── datasets/
+├── helper_functions/
+├── images/
+├── .gitignore/
+├── README.md
+├── Report.pdf
+├── Task.pdf
+├── quant_trading_code.py
+├── requirements.txt
+```
 
 ## Key Results
 
@@ -35,72 +47,49 @@ The core objective was to evaluate the empirical performance of comomentum in an
 ### Annualised Sharpe Ratios
 ![Sharpe Ratios](images/cumSharpeRatios.png)
 
-- Comomentum strategies failed to significantly outperform the standard momentum factor
-- No material improvement was observed using either threshold or hybrid signal variants.
-
----
-
-## Repository Structure
-
-```
-Quantitative-Trading-CW/
-├── quant_trading_code.py         # Main script
-├── helper_functions/             # Custom utilities for standardisation, Fama-MacBeth, etc.
-├── datasets/                     # Input data (returns, Fama-French factors) and output data
-├── images/                       # Output plots and figures
-├── Literature/                   # Supporting academic references
-├── Report.pdf                    # Final report (with all results and interpretation)
-├── Task.pdf                      # Coursework brief
-└── README.md
-```
-
----
+- Comomentum strategies did not significantly outperform standard momentum
+- Strategy efficacy collapsed when statistical significance thresholds were removed
 
 ## Requirements
-
-Install required packages before running:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-These include:
-- `pandas`
-- `numpy`
-- `matplotlib`
-- `seaborn`
-
-See `requirements.txt` for exact versions.
-
----
+See `requirements.txt` for package versions.
 
 ## How to Run
 
-From the repo root:
+From the project root:
 
 ```bash
+git clone https://github.com/RemaniSA/Quantitative-Trading-CW.git
+cd Quantitative-Trading-CW
 python quant_trading_code.py
 ```
 
-Ensure that:
-- All datasets are in `/datasets`
-- Figures will be saved to `/images`
-- Helper functions are accessible from `/helper_functions`
+Ensure:
+- All datasets are placed in `/datasets`
+- Figures are written to `/images`
+- Utility functions are accessible via `/helper_functions`
 
----
+## Further Reading
+
+- Lou, D., & Polk, C. (2021). *Comomentum: Inferring Fundamentals from Cross-Momentum*
+- Chincarini, L., & Kim, D. *Quantitative Equity Portfolio Management: An Active Approach to Portfolio Construction and Management*
+- Litterman, B. *Modern Investment Management: An Equilibrium Approach*
+- Hanke, B. Lecture notes from Quantitative Trading module at Bayes
 
 ## Authors
 
-- Shaan Ali Remani  
-- José Santos  
-- Chin-lan Chen
+- Shaan Ali Remani
+- José Santos
+- Chin-lan Chen  
 - Poh Har Yap
 
-# Coursework Brief
- 
-![Cousework for Quantitative Trading - Page 1](https://github.com/ZPedroP/Quantitative-Trading-CW/blob/main/images/Coursework_QT_Page_1.jpg)
+---
 
-![Cousework for Quantitative Trading - Page 2](https://github.com/ZPedroP/Quantitative-Trading-CW/blob/main/images/Coursework_QT_Page_2.jpg)
+### Connect
 
-![Cousework for Quantitative Trading - Page 3](https://github.com/ZPedroP/Quantitative-Trading-CW/blob/main/images/Coursework_QT_Page_3.jpg)
-
+- [LinkedIn](https://www.linkedin.com/in/shaan-ali-remani)  
+- [GitHub](https://github.com/RemaniSA)
