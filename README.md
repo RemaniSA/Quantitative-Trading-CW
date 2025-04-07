@@ -75,7 +75,7 @@ Ensure:
 
 ## Further Reading
 
-- Lou, D., & Polk, C. (2021). *Comomentum: Inferring Fundamentals from Cross-Momentum*
+- Lou, D., & Polk, C. (2021). *Comomentum: Inferring Arbitrage Activity from Return Correlations*
 - Chincarini, L., & Kim, D. *Quantitative Equity Portfolio Management: An Active Approach to Portfolio Construction and Management*
 - Litterman, B. *Modern Investment Management: An Equilibrium Approach*
 - Hanke, B. Lecture notes from Quantitative Trading module at Bayes
